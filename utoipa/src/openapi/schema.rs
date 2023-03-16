@@ -1480,7 +1480,7 @@ mod tests {
     fn reserialize_deserialized_schema_components() {
         let components = ComponentsBuilder::new()
             .schemas_from_iter(vec![(
-                "Comp",
+                Cow::Owned("Comp".to_owned()),
                 Schema::from(
                     ObjectBuilder::new()
                         .property("name", ObjectBuilder::new().schema_type(SchemaType::String))

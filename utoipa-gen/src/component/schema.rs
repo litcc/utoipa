@@ -91,7 +91,6 @@ impl ToTokens for Schema<'_> {
                 .iter()
                 .map(|alias| {
                     let name = &*alias.name;
-
                     let variant = SchemaVariant::new(
                         self.data,
                         self.attributes,
@@ -99,12 +98,12 @@ impl ToTokens for Schema<'_> {
                         self.generics,
                         Some(alias),
                     );
-                    quote! { (#name, #variant.into()) }
+                    quote! { (std::borrow::Cow::Owned(#name.to_owned()), #variant.into()) }
                 })
                 .collect::<Array<TokenStream>>();
 
             quote! {
-                fn aliases() -> Vec<(& #life str, utoipa::openapi::schema::Schema)> {
+                fn aliases() -> Vec<(std::borrow::Cow<#life, String>, utoipa::openapi::schema::Schema)> {
                     #alias_schemas.to_vec()
                 }
             }
