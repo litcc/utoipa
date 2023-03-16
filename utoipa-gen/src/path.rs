@@ -321,6 +321,7 @@ impl ToTokens for PathOperation {
         tokens.extend(path_item_type);
     }
 }
+#[cfg_attr(feature = "debug", derive(Debug, PartialEq))]
 pub struct Path<'p> {
     path_attr: PathAttr<'p>,
     fn_name: String,
@@ -332,6 +333,7 @@ pub struct Path<'p> {
 
 impl<'p> Path<'p> {
     pub fn new(path_attr: PathAttr<'p>, fn_name: &str) -> Self {
+
         Self {
             path_attr,
             fn_name: fn_name.to_string(),

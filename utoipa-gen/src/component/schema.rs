@@ -1888,12 +1888,13 @@ pub(crate) fn format_path_ref(path: &Path) -> String {
     let mut path = path.clone();
 
     // Generics and path arguments are unsupported
-    if let Some(last_segment) = path.segments.last_mut() {
-        last_segment.arguments = PathArguments::None;
-    }
+    // 2023-03-16 Here I don't quite understand why you can't use generics
+    // if let Some(last_segment) = path.segments.last_mut() {
+    //     last_segment.arguments = PathArguments::None;
+    // }
     // :: are not officially supported in the spec
     // See: https://github.com/juhaku/utoipa/pull/187#issuecomment-1173101405
-    path.to_token_stream().to_string().replace(" :: ", ".")
+    path.to_token_stream().to_string().replace(" :: ", ".").replace(" ", "")
 }
 
 #[inline]

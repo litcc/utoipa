@@ -8,6 +8,7 @@ use crate::{
     schema_type::{SchemaFormat, SchemaType},
 };
 
+#[cfg_attr(feature = "debug", derive(Debug, PartialEq))]
 pub(super) struct MediaTypeSchema<'t> {
     pub(super) type_tree: &'t TypeTree<'t>,
     pub(super) is_inline: bool,
@@ -131,6 +132,7 @@ impl ToTokens for MediaTypeSchema<'_> {
                                 .expect("ValueType::Object must have path");
 
                             let name = schema::format_path_ref(name);
+
                             tokens.extend(quote! {
                                 utoipa::openapi::Ref::from_schema_name(#name)
                             });
