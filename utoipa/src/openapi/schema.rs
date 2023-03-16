@@ -2,6 +2,7 @@
 //! used to define field properties, enum values, array or object types.
 //!
 //! [schema]: https://spec.openapis.org/oas/latest.html#schema-object
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -168,9 +169,9 @@ impl ComponentsBuilder {
     /// )]);
     /// ```
     pub fn schemas_from_iter<
-        I: IntoIterator<Item = (S, C)>,
+        '__s,
+        I: IntoIterator<Item = (Cow<'__s,String>, C)>,
         C: Into<RefOr<Schema>>,
-        S: Into<String>,
     >(
         mut self,
         schemas: I,
@@ -178,7 +179,14 @@ impl ComponentsBuilder {
         self.schemas.extend(
             schemas
                 .into_iter()
-                .map(|(name, schema)| (name.into(), schema.into())),
+                .map(|(name, schema)| (match name {
+                    Cow::Borrowed(r) =>{
+                        r.to_string()
+                    }
+                    Cow::Owned(o)  =>{
+                        o
+                    }
+                }, schema.into())),
         );
 
         self

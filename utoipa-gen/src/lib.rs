@@ -16,6 +16,7 @@ use component::into_params::IntoParams;
 use ext::{PathOperationResolver, PathOperations, PathResolver};
 use openapi::OpenApi;
 use proc_macro::TokenStream;
+use std::borrow::Cow;
 use proc_macro_error::{proc_macro_error, OptionExt, ResultExt};
 use quote::{quote, ToTokens, TokenStreamExt};
 
@@ -1536,7 +1537,6 @@ pub fn openapi(input: TokenStream) -> TokenStream {
     let openapi_attributes = openapi::parse_openapi_attrs(&attrs).expect_or_abort(
         "expected #[openapi(...)] attribute to be present when used with OpenApi derive trait",
     );
-
     let openapi = OpenApi(openapi_attributes, ident);
 
     openapi.to_token_stream().into()
@@ -2622,3 +2622,5 @@ mod parse_utils {
         }
     }
 }
+
+

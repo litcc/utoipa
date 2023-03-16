@@ -1,12 +1,13 @@
 use std::borrow::Cow;
+use std::fmt::format;
 
 use proc_macro2::{Ident, Span, TokenStream};
 use proc_macro_error::{abort, ResultExt};
-use quote::{quote, quote_spanned, ToTokens};
+use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::{
     parse::Parse, punctuated::Punctuated, spanned::Spanned, token::Comma, Attribute, Data, Field,
     Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, Lifetime, LifetimeDef, Path,
-    PathArguments, Token, Variant, Visibility,
+    PathArguments, Token, Variant, Visibility, WhereClause, WherePredicate,
 };
 
 use crate::{
@@ -142,10 +143,130 @@ impl ToTokens for Schema<'_> {
         impl_generics.params.push(schema_lifetime);
         let (impl_generics, _, _) = impl_generics.split_for_impl();
 
+        // Filtering generic type
+        let type_generics = self
+            .generics
+            .params
+            .iter()
+            .filter(|i| {
+                if let GenericParam::Type(t) = i {
+                    true
+                } else {
+                    false
+                }
+            })
+            .map(|i| {
+                if let GenericParam::Type(t) = i {
+                    t
+                } else {
+                    unreachable!("never get here")
+                }
+            })
+            .collect::<Vec<_>>();
+        // Conditionally create constraint statements based on the presence
+        // or absence of a generic type
+        let where_clause = if !type_generics.is_empty() {
+            match where_clause {
+                None => {
+                    let mut gdf = Punctuated::new();
+                    for t in &type_generics {
+                        let ty = &t.ident;
+                        gdf.push(syn::parse_quote! {
+                            #ty: utoipa::ToSchema<#life>
+                        });
+                    }
+                    Some(WhereClause {
+                        where_token: syn::token::Where::default(),
+                        predicates: gdf,
+                    })
+                }
+                Some(data) => {
+                    let mut predicates = data.predicates.clone();
+
+                    for t in &type_generics {
+                        let ty = &t.ident;
+                        // Determine if there is a qualified statement for ty in predicates,
+                        // if not create one, if so determine if there is a ToSchema<#life>
+                        // in the qualification, if not add
+                        let mut is_exist = false;
+                        predicates.iter_mut().for_each(|i| {
+                            if let WherePredicate::Type(t) = i {
+                                if t.bounded_ty.to_token_stream().to_string() == ty.to_string() {
+                                    is_exist = true;
+                                    t.bounds.push(syn::parse_quote! {
+                                        utoipa::ToSchema<#life>
+                                    });
+                                }
+                            }
+                        });
+
+                        if !is_exist {
+                            predicates.push(syn::parse_quote! {
+                                #ty: utoipa::ToSchema<#life>
+                            });
+                        }
+                    }
+                    Some(WhereClause {
+                        where_token: syn::token::Where::default(),
+                        predicates,
+                    })
+                }
+            }
+        } else {
+            None
+        };
+        // General recursive call to schema(), avoid repeated calls,
+        // so call at the beginning of the function
+        let generics_schema = if where_clause.is_some() {
+            let list = type_generics
+                .iter()
+                .map(|i| {
+                    let ty = &i.ident;
+                    let iden = ty.to_string().to_lowercase();
+
+                    let iden_name = format_ident!("name_{}", iden);
+                    let schema_data_name = format_ident!("schema_{}", iden);
+                    quote! {
+                        let (#iden_name,#schema_data_name) = #ty::schema();
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            Some(quote! {
+                #( #list )*
+            })
+        } else {
+            None
+        };
+        // Generic type name
+        let name = if generics_schema.is_some() {
+            let kk = type_generics
+                .iter()
+                .map(|i| {
+                    let ty = &i.ident;
+                    let iden = ty.to_string().to_lowercase();
+                    format_ident!("name_{}", iden)
+                })
+                .collect::<Vec<_>>();
+
+            let tmp = format!(
+                "{{}}<{}>",
+                (0..kk.len()).map(|_| "{}").collect::<Vec<_>>().join(",")
+            );
+            quote! {
+                format!(#tmp, #name, #( #kk ),*)
+            }
+        } else {
+            quote! {
+                #name.to_owned()
+            }
+        };
+
         tokens.extend(quote! {
             impl #impl_generics utoipa::ToSchema #schema_generics for #ident #ty_generics #where_clause {
-                fn schema() -> (& #life str, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>) {
-                    (#name, #variant.into())
+                fn schema() -> (std::borrow::Cow<#life, String>, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>) {
+                    #generics_schema
+                    (std::borrow::Cow::Owned(#name), #variant.into())
                 }
 
                 #aliases
@@ -321,6 +442,7 @@ impl NamedStructSchema<'_> {
                     field_features.as_ref(),
                     deprecated.as_ref(),
                     self.struct_name.as_ref(),
+                    self.generics,
                 ))
             },
             rename_field,
@@ -430,7 +552,6 @@ impl ToTokens for NamedStructSchema<'_> {
         } else {
             tokens.extend(object_tokens)
         }
-
         if let Some(deprecated) = super::get_deprecated(self.attributes) {
             tokens.extend(quote! { .deprecated(Some(#deprecated)) });
         }
@@ -496,6 +617,7 @@ impl ToTokens for UnnamedStructSchema<'_> {
                     unnamed_struct_features.as_ref(),
                     deprecated.as_ref(),
                     self.struct_name.as_ref(),
+                    None,
                 )
                 .to_token_stream(),
             );
@@ -1399,6 +1521,7 @@ struct SchemaProperty<'a> {
     features: Option<&'a Vec<Feature>>,
     deprecated: Option<&'a Deprecated>,
     object_name: &'a str,
+    pub generics: Option<&'a Generics>,
 }
 
 impl<'a> SchemaProperty<'a> {
@@ -1408,6 +1531,7 @@ impl<'a> SchemaProperty<'a> {
         features: Option<&'a Vec<Feature>>,
         deprecated: Option<&'a Deprecated>,
         object_name: &'a str,
+        generics: Option<&'a Generics>,
     ) -> Self {
         Self {
             type_tree,
@@ -1415,6 +1539,7 @@ impl<'a> SchemaProperty<'a> {
             features,
             deprecated,
             object_name,
+            generics,
         }
     }
 
@@ -1472,6 +1597,7 @@ impl ToTokens for SchemaProperty<'_> {
                             features: Some(&features),
                             deprecated: None,
                             object_name: self.object_name,
+                            generics: self.generics,
                         };
 
                         quote! { .additional_properties(Some(#schema_property)) }
@@ -1514,6 +1640,7 @@ impl ToTokens for SchemaProperty<'_> {
                     features: Some(&features),
                     deprecated: None,
                     object_name: self.object_name,
+                    generics: self.generics,
                 };
 
                 let validate = |feature: &Feature| {
@@ -1574,6 +1701,7 @@ impl ToTokens for SchemaProperty<'_> {
                     features: Some(&features),
                     deprecated: self.deprecated,
                     object_name: self.object_name,
+                    generics: self.generics,
                 };
 
                 tokens.extend(schema_property.into_token_stream());
@@ -1592,6 +1720,7 @@ impl ToTokens for SchemaProperty<'_> {
                     features: self.features,
                     deprecated: self.deprecated,
                     object_name: self.object_name,
+                    generics: self.generics,
                 };
 
                 tokens.extend(schema_property.into_token_stream())
@@ -1601,7 +1730,40 @@ impl ToTokens for SchemaProperty<'_> {
                 let empty_feature = Vec::<Feature>::new();
                 let mut features = self.features.unwrap_or(&empty_feature).clone();
                 let nullable = pop_feature!(features => Feature::Nullable(_));
+                let generics_types = self.generics.map(|generics| {
+                    generics
+                        .type_params()
+                        .map(|generic| generic.ident.to_string())
+                        .collect::<Vec<_>>()
+                });
+                let is_generics_type = if generics_types.is_some() && self.type_tree.path.is_some()
+                {
+                    let generics_types = generics_types.unwrap();
+                    let path = self.type_tree.path.as_ref().unwrap();
+                    let ident = path.get_ident();
+                    match ident {
+                        Some(d) => {
+                            let ident_str = d.to_string();
 
+                            if generics_types.contains(&ident_str) {
+                                let ident_str = ident_str.to_lowercase();
+                                let schema_data_name = format_ident!("schema_{}", ident_str);
+                                tokens.extend(quote! {
+                                    #schema_data_name
+                                });
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        None => false,
+                    }
+                } else {
+                    false
+                };
+                if is_generics_type {
+                    return;
+                }
                 match type_tree.value_type {
                     ValueType::Primitive => {
                         let type_path = &**type_tree.path.as_ref().unwrap();
@@ -1653,6 +1815,7 @@ impl ToTokens for SchemaProperty<'_> {
                             })
                         } else {
                             let type_path = &**type_tree.path.as_ref().unwrap();
+                            eprintln!("type_path: {}", format_path_ref(type_path));
                             if is_inline {
                                 nullable
                                     .map(|nullable| {

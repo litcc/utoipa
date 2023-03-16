@@ -251,6 +251,7 @@
 
 pub mod openapi;
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 pub use utoipa_gen::*;
@@ -372,13 +373,13 @@ pub trait OpenApi {
 pub trait ToSchema<'__s> {
     /// Return a tuple of name and schema or reference to a schema that can be referenced by the
     /// name or inlined directly to responses, request bodies or parameters.
-    fn schema() -> (&'__s str, openapi::RefOr<openapi::schema::Schema>);
+    fn schema() -> (Cow<'__s, String>, openapi::RefOr<openapi::schema::Schema>);
 
     /// Optional set of alias schemas for the [`ToSchema::schema`].
     ///
     /// Typically there is no need to manually implement this method but it is instead implemented
     /// by derive [`macro@ToSchema`] when `#[aliases(...)]` attribute is defined.
-    fn aliases() -> Vec<(&'__s str, openapi::schema::Schema)> {
+    fn aliases() -> Vec<(Cow<'__s, String>, openapi::schema::Schema)> {
         Vec::new()
     }
 }
@@ -389,8 +390,8 @@ pub trait ToSchema<'__s> {
 pub type TupleUnit = ();
 
 impl<'__s> ToSchema<'__s> for TupleUnit {
-    fn schema() -> (&'__s str, openapi::RefOr<openapi::schema::Schema>) {
-        ("TupleUnit", openapi::schema::empty().into())
+    fn schema() -> (Cow<'__s,String>, openapi::RefOr<openapi::schema::Schema>) {
+        (Cow::Owned("TupleUnit".to_owned()), openapi::schema::empty().into())
     }
 }
 

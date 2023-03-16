@@ -506,10 +506,9 @@ impl ToTokens for Components {
             quote! { utoipa::openapi::ComponentsBuilder::new() },
             |mut tokens, schema| {
                 let Schema(path) = schema;
-
-                tokens.extend(quote_spanned!(path.span()=>
-                     .schema_from::<#path>()
-                ));
+                tokens.extend(quote!{
+                    .schema_from::<#path>()
+                });
 
                 tokens
             },
