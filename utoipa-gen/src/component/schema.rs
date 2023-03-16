@@ -1730,40 +1730,7 @@ impl ToTokens for SchemaProperty<'_> {
                 let empty_feature = Vec::<Feature>::new();
                 let mut features = self.features.unwrap_or(&empty_feature).clone();
                 let nullable = pop_feature!(features => Feature::Nullable(_));
-                let generics_types = self.generics.map(|generics| {
-                    generics
-                        .type_params()
-                        .map(|generic| generic.ident.to_string())
-                        .collect::<Vec<_>>()
-                });
-                let is_generics_type = if generics_types.is_some() && self.type_tree.path.is_some()
-                {
-                    let generics_types = generics_types.unwrap();
-                    let path = self.type_tree.path.as_ref().unwrap();
-                    let ident = path.get_ident();
-                    match ident {
-                        Some(d) => {
-                            let ident_str = d.to_string();
 
-                            if generics_types.contains(&ident_str) {
-                                let ident_str = ident_str.to_lowercase();
-                                let schema_data_name = format_ident!("schema_{}", ident_str);
-                                tokens.extend(quote! {
-                                    #schema_data_name
-                                });
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        None => false,
-                    }
-                } else {
-                    false
-                };
-                if is_generics_type {
-                    return;
-                }
                 match type_tree.value_type {
                     ValueType::Primitive => {
                         let type_path = &**type_tree.path.as_ref().unwrap();
@@ -1815,7 +1782,44 @@ impl ToTokens for SchemaProperty<'_> {
                             })
                         } else {
                             let type_path = &**type_tree.path.as_ref().unwrap();
-                            eprintln!("type_path: {}", format_path_ref(type_path));
+                            // Get a list of all generic types
+                            let generics_types = self.generics.map(|generics| {
+                                generics
+                                    .type_params()
+                                    .map(|generic| generic.ident.to_string())
+                                    .collect::<Vec<_>>()
+                            });
+                            // Check if the type is a generic type
+                            let is_generics_type =
+                                if generics_types.is_some() && self.type_tree.path.is_some() {
+                                    let generics_types = generics_types.unwrap();
+                                    let ident = type_path.get_ident();
+                                    match ident {
+                                        Some(d) => {
+                                            let ident_str = d.to_string();
+                                            if generics_types.contains(&ident_str) {
+                                                let ident_str = ident_str.to_lowercase();
+                                                let schema_data_name =
+                                                    format_ident!("schema_{}", ident_str);
+                                                tokens.extend(quote! {
+                                                    utoipa::openapi::schema::AllOfBuilder::new()
+                                                    #nullable
+                                                    .item(#schema_data_name)
+                                                });
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        }
+                                        None => false,
+                                    }
+                                } else {
+                                    false
+                                };
+                            if is_generics_type {
+                                nullable.to_tokens(tokens);
+                                return;
+                            }
                             if is_inline {
                                 nullable
                                     .map(|nullable| {
