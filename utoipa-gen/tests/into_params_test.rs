@@ -15,6 +15,7 @@ struct TestB {
 }
 
 #[derive(Deserialize, Serialize, ToSchema,IntoParams)]
+#[into_params(parameter_in = Query)]
 struct Pet {
     id1: u64,
     name1: String,
@@ -23,6 +24,7 @@ struct Pet {
     test2:TestB
 }
 #[derive(Deserialize, Serialize, ToSchema,IntoParams)]
+#[into_params(parameter_in = Query)]
 struct Pet2 {
     id1: u64,
     name1: String,
@@ -33,13 +35,12 @@ struct Pet2 {
 }
 
 
-#[derive(Deserialize, Serialize, ToSchema,IntoParams)]
+#[derive(Deserialize, Serialize, ToSchema)]
 struct Pet3{
     id1: u64,
     name1: String,
     age1: Option<i32>,
     #[serde(flatten)]
-    #[param(schema_with = schema_with_test1)]
     test2: TestB
 }
 
@@ -59,7 +60,88 @@ pub fn schema_with_test1(parameter_in_provider: impl Fn() -> Option<utoipa::open
 
 
 
-
+impl utoipa::IntoParams for Pet3 {
+    fn into_params(
+        parameter_in_provider: impl Fn() -> Option<utoipa::openapi::path::ParameterIn>,
+    ) -> Vec<utoipa::openapi::path::Parameter> {
+        let mut params: Vec<utoipa::openapi::path::Parameter> = [
+            Some(
+                utoipa::openapi::path::ParameterBuilder::new()
+                    .name("id1")
+                    .parameter_in(parameter_in_provider().unwrap_or_default())
+                    .required(utoipa::openapi::Required::True)
+                    .schema(
+                        Some(
+                            utoipa::openapi::ObjectBuilder::new()
+                                .schema_type(
+                                    utoipa::openapi::schema::SchemaType::new(
+                                        utoipa::openapi::schema::Type::Integer,
+                                    ),
+                                )
+                                .format(
+                                    Some(
+                                        utoipa::openapi::schema::SchemaFormat::KnownFormat(
+                                            utoipa::openapi::schema::KnownFormat::Int64,
+                                        ),
+                                    ),
+                                )
+                                .minimum(Some(0f64)),
+                        ),
+                    )
+                    .build(),
+            ),
+            Some(
+                utoipa::openapi::path::ParameterBuilder::new()
+                    .name("name1")
+                    .parameter_in(parameter_in_provider().unwrap_or_default())
+                    .required(utoipa::openapi::Required::True)
+                    .schema(
+                        Some(
+                            utoipa::openapi::ObjectBuilder::new()
+                                .schema_type(
+                                    utoipa::openapi::schema::SchemaType::new(
+                                        utoipa::openapi::schema::Type::String,
+                                    ),
+                                ),
+                        ),
+                    )
+                    .build(),
+            ),
+            Some(
+                utoipa::openapi::path::ParameterBuilder::new()
+                    .name("age1")
+                    .parameter_in(parameter_in_provider().unwrap_or_default())
+                    .required(utoipa::openapi::Required::False)
+                    .schema(
+                        Some(
+                            utoipa::openapi::ObjectBuilder::new()
+                                .schema_type({
+                                    use std::iter::FromIterator;
+                                    utoipa::openapi::schema::SchemaType::from_iter([
+                                        utoipa::openapi::schema::Type::Integer,
+                                        utoipa::openapi::schema::Type::Null,
+                                    ])
+                                })
+                                .format(
+                                    Some(
+                                        utoipa::openapi::schema::SchemaFormat::KnownFormat(
+                                            utoipa::openapi::schema::KnownFormat::Int32,
+                                        ),
+                                    ),
+                                ),
+                        ),
+                    )
+                    .build(),
+            ),
+        ]
+            .into_iter()
+            .filter(Option::is_some)
+            .flatten()
+            .collect();
+        params.extend(schema_with_test1(|| parameter_in_provider()));
+        params
+    }
+}
 #[test]
 pub fn test(){
     let kk = Pet::into_params(||{None});
