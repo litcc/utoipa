@@ -164,13 +164,12 @@ impl ToTokensDiagnostics for IntoParams {
 
                 let schema_with =
                     pop_feature!(field_features => Feature::SchemaWith(_)  as Option<SchemaWith>);
-                let parameter_in = pop_feature!(into_params_features => Feature::ParameterIn(_))
-                    .and_then(|feature| match feature {
+                let parameter_in = parameter_in.as_ref().and_then(|feature| match feature {
                         Feature::ParameterIn(value) => Some(value),
                         _ => None,
                     });
-                let parameter = if let Some(ref parameter_in) = &parameter_in {
-                    quote! { || Some(parameter_in_provider().unwrap_or_else(||#parameter_in)) }
+                let parameter = if let Some( parameter_in) = parameter_in {
+                    quote! { || Some(#parameter_in) }
                 } else {
                     quote! { || parameter_in_provider() }
                 };
