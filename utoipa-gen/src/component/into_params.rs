@@ -160,11 +160,10 @@ impl ToTokensDiagnostics for IntoParams {
         let flatten_params = flatten_params.into_iter().map(|(_, field, _, mut field_features)| {
             let ty = &field.ty;
 
-            let schema_with = pop_feature!(field_features => Feature::SchemaWith(_));
+            let schema_with = pop_feature!(field_features => Feature::SchemaWith(_)  as Option<SchemaWith>);
             if let Some(schema_with) = schema_with {
-                let schema_with = crate::as_tokens_or_diagnostics!(&schema_with);
                 Ok(quote! {
-                    params.extend(#schema_with ());
+                    params.extend(#schema_with(&parameter_in_provider));
                 })
             } else {
                 Ok(quote! {
