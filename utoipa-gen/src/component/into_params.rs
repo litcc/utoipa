@@ -157,21 +157,32 @@ impl ToTokensDiagnostics for IntoParams {
             })
             .collect::<Result<Array<TokenStream>, Diagnostics>>()?;
 
-        let flatten_params = flatten_params.into_iter().map(|(_, field, _, mut field_features)| {
-            let ty = &field.ty;
+        let flatten_params = flatten_params
+            .into_iter()
+            .map(|(_, field, _, mut field_features)| {
+                let ty = &field.ty;
 
-            let schema_with = pop_feature!(field_features => Feature::SchemaWith(_)  as Option<SchemaWith>);
-            if let Some(schema_with) = schema_with {
-                Ok(quote! {
-                    params.extend(#schema_with(&parameter_in_provider));
-                })
-            } else {
-                Ok(quote! {
-                    params.extend(<#ty as utoipa::IntoParams>::into_params(&parameter_in_provider));
-                })
-            }
+                let schema_with =
+                    pop_feature!(field_features => Feature::SchemaWith(_)  as Option<SchemaWith>);
 
-        }).collect::<Result<Vec<_>, Diagnostics>>()?;
+                let parameter = if let Some(ref parameter_in) = &parameter_in {
+                    let token = parameter_in.to_token_stream();
+                    quote! { || Some(parameter_in_provider().unwrap_or_else(||#token)) }
+                } else {
+                    quote! { || parameter_in_provider() }
+                };
+
+                if let Some(schema_with) = schema_with {
+                    Ok(quote! {
+                        params.extend(#schema_with(#parameter));
+                    })
+                } else {
+                    Ok(quote! {
+                        params.extend(<#ty as utoipa::IntoParams>::into_params(#parameter));
+                    })
+                }
+            })
+            .collect::<Result<Vec<_>, Diagnostics>>()?;
 
         tokens.extend(quote! {
             impl #impl_generics utoipa::IntoParams for #ident #ty_generics #where_clause {
